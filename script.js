@@ -1,21 +1,21 @@
 let productos = [];
 let productosFiltrados = [];
+let paginaActual = 1;
+const productosPorPagina = 10;
 
 // Cargar productos desde el archivo JSON
 async function cargarProductos() {
     try {
-        const response = await fetch('productos.json');  // Ruta relativa
-        
+        const response = await fetch('productos.json');
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
         const data = await response.json();
-        // El archivo JSON es directamente un array
-        productos = data;  // <-- Cambio importante aquí
+        productos = data;
         productosFiltrados = [...productos];
-        mostrarProductos(productosFiltrados);
-        actualizarEstadisticas(productos);
+        paginaActual = 1;
+        mostrarPagina();
+        actualizarEstadisticas(productosFiltrados);
         actualizarFiltroCategorias(productos);
     } catch (error) {
         console.error('Error cargando productos:', error);
@@ -26,6 +26,7 @@ async function cargarProductos() {
                 <p style="font-size:0.8rem; color:#555;">Revisa que el archivo productos.json exista en la misma carpeta</p>
             </div>
         `;
+        document.getElementById('loadMoreBtn').style.display = 'none';
     }
 }
 
@@ -37,7 +38,6 @@ function actualizarFiltroCategorias(productosArray) {
     const categorias = [...new Set(productosArray.map(p => p.categoria).filter(Boolean))];
     categorias.sort();
     
-    // Mantener la opción "Todas las categorías"
     const currentValue = categoryFilter.value;
     categoryFilter.innerHTML = `
         <option value="">📂 Todas las categorías</option>
@@ -48,25 +48,42 @@ function actualizarFiltroCategorias(productosArray) {
     categoryFilter.value = currentValue;
 }
 
-// Mostrar productos en la interfaz
-function mostrarProductos(productosArray) {
+// Mostrar la página actual de productos
+function mostrarPagina() {
+    const start = (paginaActual - 1) * productosPorPagina;
+    const end = start + productosPorPagina;
+    const productosPagina = productosFiltrados.slice(start, end);
+
     const resultsDiv = document.getElementById('results');
     
-    if (!productosArray || productosArray.length === 0) {
+    if (productosFiltrados.length === 0) {
         resultsDiv.innerHTML = `
             <div class="no-results">
                 <h3>🔍 No se encontraron productos</h3>
                 <p>Prueba con otros términos de búsqueda</p>
             </div>
         `;
+        document.getElementById('loadMoreBtn').style.display = 'none';
         return;
     }
 
-    resultsDiv.innerHTML = productosArray.map(producto => `
+    if (productosPagina.length === 0 && paginaActual === 1) {
+        resultsDiv.innerHTML = `
+            <div class="no-results">
+                <h3>🔍 No se encontraron productos</h3>
+                <p>Prueba con otros términos de búsqueda</p>
+            </div>
+        `;
+        document.getElementById('loadMoreBtn').style.display = 'none';
+        return;
+    }
+
+    // Renderizar los productos de esta página
+    resultsDiv.innerHTML = productosPagina.map(producto => `
         <div class="product-card">
             <span class="category">${producto.categoria || 'Sin categoría'}</span>
             <h3>${producto.nombre || 'Sin nombre'}</h3>
-            ${producto.marca ? `<p class="marca">🏷️ ${producto.marca}</p>` : ''}
+            ${producto.marca ? `<div class="marca">🏷️ ${producto.marca}</div>` : ''}
             <div class="price-container">
                 <div class="price">$${typeof producto.precio === 'number' ? producto.precio.toFixed(2) : producto.precio}</div>
                 ${producto.iva ? `<div class="iva">IVA: $${typeof producto.iva === 'number' ? producto.iva.toFixed(2) : producto.iva}</div>` : ''}
@@ -75,6 +92,16 @@ function mostrarProductos(productosArray) {
             ${producto.id ? `<div class="codigo">ID: ${producto.id}</div>` : ''}
         </div>
     `).join('');
+
+    // Controlar el botón "Cargar más"
+    const loadBtn = document.getElementById('loadMoreBtn');
+    if (end < productosFiltrados.length) {
+        loadBtn.style.display = 'block';
+        loadBtn.disabled = false;
+        loadBtn.textContent = `Cargar más (${productosFiltrados.length - end} restantes)`;
+    } else {
+        loadBtn.style.display = 'none';
+    }
 }
 
 // Actualizar estadísticas
@@ -85,7 +112,6 @@ function actualizarEstadisticas(productosArray) {
     const categorias = [...new Set(productosArray.map(p => p.categoria).filter(Boolean))];
     const marcas = [...new Set(productosArray.map(p => p.marca).filter(Boolean))];
     
-    // Calcular precio promedio
     const precios = productosArray.map(p => p.precio).filter(p => typeof p === 'number' && p > 0);
     const promedio = precios.length > 0 ? precios.reduce((a,b) => a + b, 0) / precios.length : 0;
     
@@ -103,7 +129,6 @@ function buscarProductos() {
     const category = document.getElementById('categoryFilter').value;
     const sort = document.getElementById('sortFilter').value;
 
-    // Filtrar productos
     let resultados = productos.filter(producto => {
         const matchesSearch = !searchTerm || 
             (producto.nombre && producto.nombre.toLowerCase().includes(searchTerm)) ||
@@ -139,7 +164,8 @@ function buscarProductos() {
     }
 
     productosFiltrados = resultados;
-    mostrarProductos(resultados);
+    paginaActual = 1;
+    mostrarPagina();
     actualizarEstadisticas(resultados);
 }
 
@@ -151,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchButton = document.getElementById('searchButton');
     const categoryFilter = document.getElementById('categoryFilter');
     const sortFilter = document.getElementById('sortFilter');
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
 
     // Búsqueda en tiempo real con debounce
     let timeoutId;
@@ -159,20 +186,21 @@ document.addEventListener('DOMContentLoaded', () => {
         timeoutId = setTimeout(buscarProductos, 300);
     });
 
-    // Búsqueda al hacer clic en el botón
     searchButton.addEventListener('click', buscarProductos);
-
-    // Filtros
     categoryFilter.addEventListener('change', buscarProductos);
     sortFilter.addEventListener('change', buscarProductos);
 
-    // Enter key
     searchInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             buscarProductos();
         }
     });
+
+    // Cargar más productos
+    loadMoreBtn.addEventListener('click', () => {
+        paginaActual++;
+        mostrarPagina();
+    });
 });
 
-// Para depuración en consola
-console.log('🚀 Buscador de productos cargado');
+console.log('🚀 Buscador de productos con paginación cargado');
