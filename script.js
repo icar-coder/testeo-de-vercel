@@ -1,30 +1,48 @@
 let productos = [];
 let productosFiltrados = [];
 
-// Cargar productos - Versión para Vercel con JSON en public/
-// Intenta primero una ruta, si falla prueba la otra
 async function cargarProductos() {
     try {
-        let response = await fetch('/public/productos.json');
-        if (!response.ok) {
-            // Si falla, intenta en la raíz
-            response = await fetch('productos.json');
+        const rutas = ['/productos.json', './productos.json', '/public/productos.json'];
+        let response = null;
+
+        for (const ruta of rutas) {
+            response = await fetch(ruta);
+            if (response.ok) {
+                break;
+            }
         }
+
+        if (!response || !response.ok) {
+            throw new Error(`No se pudo cargar el JSON. Último estado: ${response ? response.status : 'sin respuesta'}`);
+        }
+
         const data = await response.json();
-        productos = data.productos;
+        productos = Array.isArray(data.productos) ? data.productos : [];
         productosFiltrados = [...productos];
         mostrarProductos(productosFiltrados);
         console.log('✅ Productos cargados');
     } catch (error) {
-        console.error('❌ Error:', error);
-        // Mostrar error en pantalla
+        console.error('❌ Error al cargar productos:', error);
+        const resultsDiv = document.getElementById('results');
+        if (resultsDiv) {
+            resultsDiv.innerHTML = `
+                <div class="no-results">
+                    <h3>⚠️ No se pudieron cargar los productos</h3>
+                    <p>Revisa que el archivo exista en la carpeta public y que la ruta sea correcta.</p>
+                </div>
+            `;
+        }
     }
 }
 
-// Mostrar productos en la interfaz
 function mostrarProductos(productosArray) {
     const resultsDiv = document.getElementById('results');
-    
+
+    if (!resultsDiv) {
+        return;
+    }
+
     if (!productosArray || productosArray.length === 0) {
         resultsDiv.innerHTML = `
             <div class="no-results">
@@ -41,31 +59,36 @@ function mostrarProductos(productosArray) {
             <span class="category">${producto.categoria}</span>
             <h3>${producto.nombre}</h3>
             <p class="description">${producto.descripcion}</p>
-            <div class="price">$${producto.precio.toFixed(2)}</div>
+            <div class="price">$${Number(producto.precio || 0).toFixed(2)}</div>
         </div>
     `).join('');
 }
 
-// Función de búsqueda con filtros y ordenamiento
 function buscarProductos() {
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
-    const category = document.getElementById('categoryFilter').value;
-    const sort = document.getElementById('sortFilter').value;
+    const searchInput = document.getElementById('searchInput');
+    const categoryFilter = document.getElementById('categoryFilter');
+    const sortFilter = document.getElementById('sortFilter');
 
-    // Filtrar por término de búsqueda y categoría
+    if (!searchInput || !categoryFilter || !sortFilter) {
+        return;
+    }
+
+    const searchTerm = searchInput.value.toLowerCase().trim();
+    const category = categoryFilter.value;
+    const sort = sortFilter.value;
+
     let resultados = productos.filter(producto => {
-        const matchesSearch = !searchTerm || 
+        const matchesSearch = !searchTerm ||
             producto.nombre.toLowerCase().includes(searchTerm) ||
             producto.categoria.toLowerCase().includes(searchTerm) ||
             producto.descripcion.toLowerCase().includes(searchTerm);
-        
+
         const matchesCategory = !category || producto.categoria === category;
-        
+
         return matchesSearch && matchesCategory;
     });
 
-    // Ordenar resultados
-    switch(sort) {
+    switch (sort) {
         case 'price-asc':
             resultados.sort((a, b) => a.precio - b.precio);
             break;
@@ -75,7 +98,7 @@ function buscarProductos() {
         case 'name':
             resultados.sort((a, b) => a.nombre.localeCompare(b.nombre));
             break;
-        default: // relevance
+        default:
             if (searchTerm) {
                 resultados.sort((a, b) => {
                     const aScore = a.nombre.toLowerCase().includes(searchTerm) ? 2 : 1;
@@ -89,30 +112,37 @@ function buscarProductos() {
     mostrarProductos(resultados);
 }
 
-// Configurar eventos cuando el DOM esté listo
 document.addEventListener('DOMContentLoaded', () => {
     cargarProductos();
-    
+
     const searchInput = document.getElementById('searchInput');
     const searchButton = document.getElementById('searchButton');
     const categoryFilter = document.getElementById('categoryFilter');
     const sortFilter = document.getElementById('sortFilter');
 
-    // Búsqueda en tiempo real con debounce
-    let timeoutId;
-    searchInput.addEventListener('input', () => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(buscarProductos, 300);
-    });
+    if (searchInput) {
+        let timeoutId;
+        searchInput.addEventListener('input', () => {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(buscarProductos, 300);
+        });
 
-    searchButton.addEventListener('click', buscarProductos);
-    categoryFilter.addEventListener('change', buscarProductos);
-    sortFilter.addEventListener('change', buscarProductos);
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                buscarProductos();
+            }
+        });
+    }
 
-    // Enter key para buscar
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            buscarProductos();
-        }
-    });
+    if (searchButton) {
+        searchButton.addEventListener('click', buscarProductos);
+    }
+
+    if (categoryFilter) {
+        categoryFilter.addEventListener('change', buscarProductos);
+    }
+
+    if (sortFilter) {
+        sortFilter.addEventListener('change', buscarProductos);
+    }
 });

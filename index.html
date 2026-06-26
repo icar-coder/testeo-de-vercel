@@ -10,6 +10,27 @@
     <div class="container">
         <h1>🚀 ¡Vercel funciona con CSS!</h1>
         <p>CSS cargado correctamente</p>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="Buscar productos...">
+            <button id="searchButton">Buscar</button>
+        </div>
+
+        <div class="filters">
+            <select id="categoryFilter">
+                <option value="">Todas las categorías</option>
+            </select>
+            <select id="sortFilter">
+                <option value="relevance">Relevancia</option>
+                <option value="price-asc">Precio: menor a mayor</option>
+                <option value="price-desc">Precio: mayor a menor</option>
+                <option value="name">Nombre</option>
+            </select>
+        </div>
+
+        <div id="results"></div>
     </div>
+
+    <script src="script.js"></script>
 </body>
 </html>
