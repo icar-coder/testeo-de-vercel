@@ -3,7 +3,7 @@ console.log('✅ JavaScript cargado');
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         // Prueba 1: JSON en raíz
-        const response = await fetch('public/productos.json');
+        const response = await fetch('productos.json');
         console.log('Status de productos.json:', response.status);
         
         if (response.ok) {
