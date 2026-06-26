@@ -1,48 +1,36 @@
 let productos = [];
 let productosFiltrados = [];
 
+// Cargar productos desde el archivo JSON
 async function cargarProductos() {
     try {
-        const rutas = ['/productos.json', './productos.json', '/public/productos.json'];
-        let response = null;
-
-        for (const ruta of rutas) {
-            response = await fetch(ruta);
-            if (response.ok) {
-                break;
-            }
+        const response = await fetch('/productos.json');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
-
-        if (!response || !response.ok) {
-            throw new Error(`No se pudo cargar el JSON. Último estado: ${response ? response.status : 'sin respuesta'}`);
-        }
-
+        
         const data = await response.json();
-        productos = Array.isArray(data.productos) ? data.productos : [];
+        productos = data.productos;
         productosFiltrados = [...productos];
         mostrarProductos(productosFiltrados);
-        console.log('✅ Productos cargados');
+        actualizarEstadisticas(productos);
     } catch (error) {
-        console.error('❌ Error al cargar productos:', error);
-        const resultsDiv = document.getElementById('results');
-        if (resultsDiv) {
-            resultsDiv.innerHTML = `
-                <div class="no-results">
-                    <h3>⚠️ No se pudieron cargar los productos</h3>
-                    <p>Revisa que el archivo exista en la carpeta public y que la ruta sea correcta.</p>
-                </div>
-            `;
-        }
+        console.error('Error cargando productos:', error);
+        document.getElementById('results').innerHTML = `
+            <div class="no-results">
+                <h3>❌ Error al cargar productos</h3>
+                <p>Error: ${error.message}</p>
+                <p style="font-size:0.8rem; color:#555;">Revisa que el archivo productos.json exista</p>
+            </div>
+        `;
     }
 }
 
+// Mostrar productos en la interfaz
 function mostrarProductos(productosArray) {
     const resultsDiv = document.getElementById('results');
-
-    if (!resultsDiv) {
-        return;
-    }
-
+    
     if (!productosArray || productosArray.length === 0) {
         resultsDiv.innerHTML = `
             <div class="no-results">
@@ -55,40 +43,61 @@ function mostrarProductos(productosArray) {
 
     resultsDiv.innerHTML = productosArray.map(producto => `
         <div class="product-card">
-            <img src="${producto.imagen || 'https://via.placeholder.com/150'}" alt="${producto.nombre}" />
-            <span class="category">${producto.categoria}</span>
-            <h3>${producto.nombre}</h3>
-            <p class="description">${producto.descripcion}</p>
-            <div class="price">$${Number(producto.precio || 0).toFixed(2)}</div>
+            <span class="category">${producto.categoria || 'Sin categoría'}</span>
+            <h3>${producto.nombre || 'Sin nombre'}</h3>
+            ${producto.marca ? `<p class="marca">🏷️ ${producto.marca}</p>` : ''}
+            <p class="description">${producto.descripcion || 'Sin descripción'}</p>
+            <div class="price-container">
+                <div class="price">$${producto.precio.toFixed(2)}</div>
+                ${producto.iva ? `<div class="iva">IVA: $${producto.iva.toFixed(2)}</div>` : ''}
+            </div>
+            ${producto.base_imponible ? `<div class="base">Base: $${producto.base_imponible.toFixed(2)}</div>` : ''}
+            ${producto.codigo ? `<div class="codigo">Código: ${producto.codigo}</div>` : ''}
         </div>
     `).join('');
 }
 
+// Actualizar estadísticas
+function actualizarEstadisticas(productosArray) {
+    const stats = document.getElementById('stats');
+    if (!stats) return;
+    
+    const categorias = [...new Set(productosArray.map(p => p.categoria).filter(Boolean))];
+    const marcas = [...new Set(productosArray.map(p => p.marca).filter(Boolean))];
+    
+    // Calcular precio promedio
+    const precios = productosArray.map(p => p.precio).filter(p => p > 0);
+    const promedio = precios.length > 0 ? precios.reduce((a,b) => a + b, 0) / precios.length : 0;
+    
+    stats.innerHTML = `
+        📦 <strong>${productosArray.length}</strong> productos · 
+        📂 <strong>${categorias.length}</strong> categorías · 
+        🏷️ <strong>${marcas.length}</strong> marcas · 
+        💰 Promedio: <strong>$${promedio.toFixed(2)}</strong>
+    `;
+}
+
+// Función principal de búsqueda y filtrado
 function buscarProductos() {
-    const searchInput = document.getElementById('searchInput');
-    const categoryFilter = document.getElementById('categoryFilter');
-    const sortFilter = document.getElementById('sortFilter');
+    const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+    const category = document.getElementById('categoryFilter').value;
+    const sort = document.getElementById('sortFilter').value;
 
-    if (!searchInput || !categoryFilter || !sortFilter) {
-        return;
-    }
-
-    const searchTerm = searchInput.value.toLowerCase().trim();
-    const category = categoryFilter.value;
-    const sort = sortFilter.value;
-
+    // Filtrar productos
     let resultados = productos.filter(producto => {
-        const matchesSearch = !searchTerm ||
+        const matchesSearch = !searchTerm || 
             producto.nombre.toLowerCase().includes(searchTerm) ||
-            producto.categoria.toLowerCase().includes(searchTerm) ||
-            producto.descripcion.toLowerCase().includes(searchTerm);
-
+            (producto.categoria && producto.categoria.toLowerCase().includes(searchTerm)) ||
+            (producto.marca && producto.marca.toLowerCase().includes(searchTerm)) ||
+            (producto.descripcion && producto.descripcion.toLowerCase().includes(searchTerm));
+        
         const matchesCategory = !category || producto.categoria === category;
-
+        
         return matchesSearch && matchesCategory;
     });
 
-    switch (sort) {
+    // Ordenar resultados
+    switch(sort) {
         case 'price-asc':
             resultados.sort((a, b) => a.precio - b.precio);
             break;
@@ -98,11 +107,13 @@ function buscarProductos() {
         case 'name':
             resultados.sort((a, b) => a.nombre.localeCompare(b.nombre));
             break;
-        default:
+        default: // relevance
             if (searchTerm) {
                 resultados.sort((a, b) => {
-                    const aScore = a.nombre.toLowerCase().includes(searchTerm) ? 2 : 1;
-                    const bScore = b.nombre.toLowerCase().includes(searchTerm) ? 2 : 1;
+                    const aScore = a.nombre.toLowerCase().includes(searchTerm) ? 2 : 
+                                   (a.marca && a.marca.toLowerCase().includes(searchTerm)) ? 1 : 0;
+                    const bScore = b.nombre.toLowerCase().includes(searchTerm) ? 2 : 
+                                   (b.marca && b.marca.toLowerCase().includes(searchTerm)) ? 1 : 0;
                     return bScore - aScore;
                 });
             }
@@ -110,39 +121,39 @@ function buscarProductos() {
 
     productosFiltrados = resultados;
     mostrarProductos(resultados);
+    actualizarEstadisticas(resultados);
 }
 
+// Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     cargarProductos();
-
+    
     const searchInput = document.getElementById('searchInput');
     const searchButton = document.getElementById('searchButton');
     const categoryFilter = document.getElementById('categoryFilter');
     const sortFilter = document.getElementById('sortFilter');
 
-    if (searchInput) {
-        let timeoutId;
-        searchInput.addEventListener('input', () => {
-            clearTimeout(timeoutId);
-            timeoutId = setTimeout(buscarProductos, 300);
-        });
+    // Búsqueda en tiempo real con debounce
+    let timeoutId;
+    searchInput.addEventListener('input', () => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(buscarProductos, 300);
+    });
 
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                buscarProductos();
-            }
-        });
-    }
+    // Búsqueda al hacer clic en el botón
+    searchButton.addEventListener('click', buscarProductos);
 
-    if (searchButton) {
-        searchButton.addEventListener('click', buscarProductos);
-    }
+    // Filtros
+    categoryFilter.addEventListener('change', buscarProductos);
+    sortFilter.addEventListener('change', buscarProductos);
 
-    if (categoryFilter) {
-        categoryFilter.addEventListener('change', buscarProductos);
-    }
-
-    if (sortFilter) {
-        sortFilter.addEventListener('change', buscarProductos);
-    }
+    // Enter key
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            buscarProductos();
+        }
+    });
 });
+
+// Para depuración en consola
+console.log('🚀 Buscador de productos cargado');
